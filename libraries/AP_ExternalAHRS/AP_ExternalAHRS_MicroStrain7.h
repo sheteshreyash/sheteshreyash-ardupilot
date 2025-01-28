@@ -68,18 +68,10 @@ private:
         GQ7_FULL_NAV = 0x04
     };
 
-    enum class DeviceInfo {  // (sheteshreyash)
-    MIN_RESPONSE_LENGTH = 64, // Example minimum response size
-    MODEL_NUMBER_OFFSET = 6,  // Adjust based on protocol documentation
-    CV7_IDENTIFIER = 6286, // CV7 model number as a string
-    GQ7_IDENTIFIER = 6284 // Replace with the GQ7 model number
-};
 
     uint32_t baudrate;
     int8_t port_num;
     bool port_open = false;
-
-
 
     void build_packet();
 

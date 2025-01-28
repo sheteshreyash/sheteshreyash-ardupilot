@@ -68,24 +68,30 @@ AP_ExternalAHRS_MicroStrain7::AP_ExternalAHRS_MicroStrain7(AP_ExternalAHRS *_fro
         AP_BoardConfig::allocation_error("MicroStrain7 ExternalAHRS failed to allocate ExternalAHRS update thread");
     }
 
-    // Send the Aiding Command (if the device is CV7) (sheteshreyash)
-    if (is_cv7) {
-        uint8_t aiding_command[2] = {0x13, 0x1F};
-        uart->write(aiding_command, sizeof(aiding_command));
-        uint8_t aiding_response[256];
-        uint16_t aiding_response_len = uart->read(aiding_response, sizeof(aiding_response));
 
-        if (aiding_response_len > 0) {
-            GCS_SEND_TEXT(MAV_SEVERITY_INFO, LOG_FMT, get_name(), "Aiding Command confirmed: 3DM-CV7 detected.");
-        } else {
-            GCS_SEND_TEXT(MAV_SEVERITY_WARNING, LOG_FMT, get_name(), "Aiding Command failed.");
+    is_cv7 = false; // default to GQ7
+    // Read descriptor set to determine if the device is CV7
+    uint8_t response[4] = {0};
+    if (uart->read(response, sizeof(response)) > 0) {
+        DescriptorSet set = DescriptorSet(response[2]); // Get the descriptor from the response
+
+        if (set != DescriptorSet::GNSSRecv1 && set != DescriptorSet::GNSSRecv2) {
+            is_cv7 = true;  // If GNSS data is missing, it's a CV7
         }
     }
 
     // don't offer IMU by default, at 100Hz it is too slow for many aircraft
-    set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::GPS) |
-                        uint16_t(AP_ExternalAHRS::AvailableSensor::BARO) |
-                        uint16_t(AP_ExternalAHRS::AvailableSensor::COMPASS));
+     // Set default sensors based on device type
+    if (is_cv7) {
+        // CV7 does not provide GPS or BARO, only COMPASS
+        set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::COMPASS));
+    } else {
+        // Default for non-CV7 devices
+        set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::GPS) |
+                            uint16_t(AP_ExternalAHRS::AvailableSensor::BARO) |
+                            uint16_t(AP_ExternalAHRS::AvailableSensor::COMPASS));
+    }
+
 
     hal.scheduler->delay(5000);
     if (!initialised()) {

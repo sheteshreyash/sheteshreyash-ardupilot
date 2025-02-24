@@ -143,11 +143,11 @@ void MicroStrainCV7::send_filter_packet(void)
 
     // https://s3.amazonaws.com/files.microstrain.com/CV7+Online/external_content/dcp/Data/0x82/data/0x13.htm
     // Gravity Vector
-    packet.payload[packet.payload_size++] = 0x04; // Field Size for Gravity Vector
-    packet.payload[packet.payload_size++] = 0x13; // Gravity Vector Descriptor
-    put_float(packet, fdm.gravity_x); // Gravity X
-    put_float(packet, fdm.gravity_y); // Gravity Y
-    put_float(packet, fdm.gravity_z); // Gravity Z
+    // packet.payload[packet.payload_size++] = 0x04; // Field Size for Gravity Vector
+    // packet.payload[packet.payload_size++] = 0x13; // Gravity Vector Descriptor
+    // put_float(packet, fdm.gravity_x); // Gravity X
+    // put_float(packet, fdm.gravity_y); // Gravity Y
+    // put_float(packet, fdm.gravity_z); // Gravity Z
 
     // https://s3.amazonaws.com/files.microstrain.com/CV7+Online/external_content/dcp/Data/0x82/data/0x21.htm
     // Pressure Altitude

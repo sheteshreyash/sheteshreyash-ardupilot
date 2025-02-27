@@ -221,11 +221,11 @@ void AP_ExternalAHRS_MicroStrain7::post_filter() const  //sheteshreyash
     // Publish GNSS data only for GQ7
     if (!is_cv7) {
         for (int instance = 0; instance < NUM_GNSS_INSTANCES; instance++) {
-            // Prepare GNSS message
+            // *INDENT-OFF*
             AP_ExternalAHRS::gps_data_message_t gps{
                 gps_week: filter_data.week,
                 ms_tow: filter_data.tow_ms,
-                fix_type: AP_GPS_FixType(gnss_data[instance].fix_type),
+                fix_type: (uint8_t) gnss_data[instance].fix_type,
                 satellites_in_view: gnss_data[instance].satellites,
 
                 horizontal_pos_accuracy: gnss_data[instance].horizontal_position_accuracy,
@@ -245,7 +245,7 @@ void AP_ExternalAHRS_MicroStrain7::post_filter() const  //sheteshreyash
             };
 
             // Update origin if not set and fix type is 3D or better
-            if (gps.fix_type >= AP_GPS_FixType::FIX_3D && !state.have_origin) {
+            if (gps.fix_type >= 3 && !state.have_origin) {
                 WITH_SEMAPHORE(state.sem);
                 state.origin = Location{int32_t(gnss_data[instance].lat),
                                         int32_t(gnss_data[instance].lon),

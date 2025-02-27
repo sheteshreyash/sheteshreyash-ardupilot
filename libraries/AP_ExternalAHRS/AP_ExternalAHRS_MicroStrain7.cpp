@@ -68,9 +68,17 @@ AP_ExternalAHRS_MicroStrain7::AP_ExternalAHRS_MicroStrain7(AP_ExternalAHRS *_fro
     }
 
     // don't offer IMU by default, at 100Hz it is too slow for many aircraft
-    set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::GPS) |
-                        uint16_t(AP_ExternalAHRS::AvailableSensor::BARO) |
-                        uint16_t(AP_ExternalAHRS::AvailableSensor::COMPASS));
+    if (is_cv7) {
+        // CV7 does not provide GPS, only COMPASS and BARO
+        set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::COMPASS) |
+                            uint16_t(AP_ExternalAHRS::AvailableSensor::BARO));
+    } else {
+        // Default for non-CV7 devices
+        set_default_sensors(uint16_t(AP_ExternalAHRS::AvailableSensor::GPS) |
+                            uint16_t(AP_ExternalAHRS::AvailableSensor::BARO) |
+                            uint16_t(AP_ExternalAHRS::AvailableSensor::COMPASS));
+    }
+
 
     hal.scheduler->delay(5000);
     if (!initialised()) {
@@ -187,57 +195,67 @@ void AP_ExternalAHRS_MicroStrain7::post_imu() const
 #endif
 }
 
-void AP_ExternalAHRS_MicroStrain7::post_filter() const
+void AP_ExternalAHRS_MicroStrain7::post_filter() const  //sheteshreyash
 {
     {
         WITH_SEMAPHORE(state.sem);
+        // Publish filter velocity and quaternion data
         state.velocity = Vector3f{filter_data.ned_velocity_north, filter_data.ned_velocity_east, filter_data.ned_velocity_down};
         state.have_velocity = true;
 
-        // TODO the filter does not supply MSL altitude.
-        // The GNSS system has both MSL and WGS-84 ellipsoid height.
-        // Use GNSS 0 even though it may be bad.
-        state.location = Location{filter_data.lat, filter_data.lon, gnss_data[0].msl_altitude, Location::AltFrame::ABSOLUTE};
-        state.have_location = true;
-
         state.quat = filter_data.attitude_quat;
         state.have_quaternion = true;
+
+        // Handle location data
+        if (!is_cv7) {
+            // For GQ7, use GNSS data for location
+            state.location = Location{filter_data.lat, filter_data.lon, gnss_data[0].msl_altitude, Location::AltFrame::ABSOLUTE};
+            state.have_location = true;
+        } else {
+            // For CV7, use filter data or set location as invalid
+            state.location = Location{};
+            state.have_location = false;
+        }
     }
 
-    for (int instance = 0; instance < NUM_GNSS_INSTANCES; instance++) {
-        // *INDENT-OFF*
-        AP_ExternalAHRS::gps_data_message_t gps {
-            gps_week: filter_data.week,
-            ms_tow: filter_data.tow_ms,
-            fix_type: (uint8_t) gnss_data[instance].fix_type,
-            satellites_in_view: gnss_data[instance].satellites,
+    // Publish GNSS data only for GQ7
+    if (!is_cv7) {
+        for (int instance = 0; instance < NUM_GNSS_INSTANCES; instance++) {
+            // Prepare GNSS message
+            AP_ExternalAHRS::gps_data_message_t gps{
+                gps_week: filter_data.week,
+                ms_tow: filter_data.tow_ms,
+                fix_type: AP_GPS_FixType(gnss_data[instance].fix_type),
+                satellites_in_view: gnss_data[instance].satellites,
 
-            horizontal_pos_accuracy: gnss_data[instance].horizontal_position_accuracy,
-            vertical_pos_accuracy: gnss_data[instance].vertical_position_accuracy,
-            horizontal_vel_accuracy: gnss_data[instance].speed_accuracy,
+                horizontal_pos_accuracy: gnss_data[instance].horizontal_position_accuracy,
+                vertical_pos_accuracy: gnss_data[instance].vertical_position_accuracy,
+                horizontal_vel_accuracy: gnss_data[instance].speed_accuracy,
 
-            hdop: gnss_data[instance].hdop,
-            vdop: gnss_data[instance].vdop,
+                hdop: gnss_data[instance].hdop,
+                vdop: gnss_data[instance].vdop,
 
-            longitude: gnss_data[instance].lon,
-            latitude: gnss_data[instance].lat,
-            msl_altitude: gnss_data[instance].msl_altitude,
+                longitude: gnss_data[instance].lon,
+                latitude: gnss_data[instance].lat,
+                msl_altitude: gnss_data[instance].msl_altitude,
 
-            ned_vel_north: gnss_data[instance].ned_velocity_north,
-            ned_vel_east: gnss_data[instance].ned_velocity_east,
-            ned_vel_down: gnss_data[instance].ned_velocity_down,
-        };
-        // *INDENT-ON*
+                ned_vel_north: gnss_data[instance].ned_velocity_north,
+                ned_vel_east: gnss_data[instance].ned_velocity_east,
+                ned_vel_down: gnss_data[instance].ned_velocity_down,
+            };
 
-        if (gps.fix_type >= 3 && !state.have_origin) {
-            WITH_SEMAPHORE(state.sem);
-            state.origin = Location{int32_t(gnss_data[instance].lat),
-                                    int32_t(gnss_data[instance].lon),
-                                    int32_t(gnss_data[instance].msl_altitude),
-                                    Location::AltFrame::ABSOLUTE};
-            state.have_origin = true;
+            // Update origin if not set and fix type is 3D or better
+            if (gps.fix_type >= AP_GPS_FixType::FIX_3D && !state.have_origin) {
+                WITH_SEMAPHORE(state.sem);
+                state.origin = Location{int32_t(gnss_data[instance].lat),
+                                        int32_t(gnss_data[instance].lon),
+                                        int32_t(gnss_data[instance].msl_altitude),
+                                        Location::AltFrame::ABSOLUTE};
+                state.have_origin = true;
+            }
+            // Send GPS data to the AP framework
+            AP::gps().handle_external(gps, instance);
         }
-        AP::gps().handle_external(gps, instance);
     }
 }
 
@@ -262,8 +280,17 @@ bool AP_ExternalAHRS_MicroStrain7::healthy(void) const
 
 bool AP_ExternalAHRS_MicroStrain7::initialised(void) const
 {
-    const bool got_packets = last_imu_pkt != 0 && last_gps_pkt != 0 && last_filter_pkt != 0;
-    return got_packets;
+    // Check packets based on device type
+    if (is_cv7) {
+        // CV7 requires only IMU packets
+        return last_imu_pkt != 0;
+    } else {
+        // GQ7 requires IMU, GPS, and Filter packets
+        const bool got_packets =    (last_imu_pkt != 0) &&
+                                    (last_gps_pkt != 0) &&
+                                    (last_filter_pkt != 0);
+        return got_packets;
+    }
 }
 
 bool AP_ExternalAHRS_MicroStrain7::pre_arm_check(char *failure_msg, uint8_t failure_msg_len) const

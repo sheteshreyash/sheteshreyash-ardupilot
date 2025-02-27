@@ -93,6 +93,8 @@ private:
     // Used to monitor initialization state.
     bool last_init_state = false;
 
+    // True if the device is a 3DM-CV7, false if it is a 3DM-GQ7 (sheteshreyash)
+    bool is_cv7 = false;
 };
 
 #endif // AP_EXTERNAL_AHRS_MICROSTRAIN7_ENABLED

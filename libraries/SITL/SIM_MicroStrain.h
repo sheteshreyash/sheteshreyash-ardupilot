@@ -68,5 +68,13 @@ private:
 
 };
 
+class MicroStrainCV7 : public MicroStrain7  // (sheteshreyash)
+{
+    // Specialization for the 3DM-CV7 IMU
+private:
+    void send_ahrs_packet();  // New AHRS packet sending
+    void send_filter_packet() override; // Override Filter packet sending
+};
+
 }
 
